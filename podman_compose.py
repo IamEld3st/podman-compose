@@ -24,6 +24,7 @@ import json
 import glob
 
 from threading import Thread
+from signal import signal, pthread_kill, SIGINT
 
 import shlex
 
@@ -48,6 +49,10 @@ is_dict = lambda d: isinstance(d, dict)
 is_list = lambda l: not is_str(l) and not is_dict(l) and hasattr(l, "__iter__")
 # identity filter
 filteri = lambda a: filter(lambda i: i, a)
+kill = False
+
+def sigint_handler(signum, frame):
+    kill = True
 
 
 def try_int(i, fallback=None):
@@ -2079,8 +2084,15 @@ def compose_up(compose, args):
                         compose.exit_code if compose.exit_code is not None else -1
                     )
                     sys.exit(exit_code)
+            elif kill:
+                pthread_kill(thread.ident, SIGINT)
         for thread in to_remove:
             threads.remove(thread)
+
+    containers = list(reversed(compose.containers))
+    podman_args = []
+    for cnt in containers:
+        compose.podman.run([], "stop", [*podman_args, cnt["name"]], sleep=0)
 
 
 def get_volume_names(compose, cnt):
@@ -2855,6 +2867,7 @@ def compose_kill_parse(parser):
 
 
 def main():
+    signal(SIGINT, sigint_handler)
     podman_compose.run()
 
 
